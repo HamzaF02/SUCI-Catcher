@@ -20,17 +20,27 @@ Follow https://github.com/simula/oai-cn5g-fed/tree/dreibh/simulamet-develop, usi
 ## Steps
 
 1. Update to db to match the following db config:
-    docker exec mysql mysql -u test --password=test oai_db
-  -e "UPDATE AuthenticationSubscription SET encPermanentKey='0C0A34601D4F07677303652C0462535B', encOpcKey='63bfa50ee6523365ff14c1f45f88737d', protectionParameterId='0C0A34601D4F07677303652C0462535B' WHERE ueid='208950000000034';"
 
-    docker exec mysql mysql -u test --password=test oai_db
-  -e "UPDATE AuthenticationSubscription SET encPermanentKey='c004bc7e34117399d2046655b77c8283', encOpcKey='9245cd6283cc53ce24ac1186a60dee6b', protectionParameterId='c004bc7e34117399d2046655b77c8283' WHERE ueid='208950000000042';"
+        docker exec mysql mysql -u test --password=test oai_db -e "UPDATE AuthenticationSubscription SET encPermanentKey='0C0A34601D4F07677303652C0462535B', encOpcKey='63bfa50ee6523365ff14c1f45f88737d', protectionParameterId='0C0A34601D4F07677303652C0462535B' WHERE ueid='208950000000034';"
+
+        docker exec mysql mysql -u test --password=test oai_db -e "UPDATE AuthenticationSubscription SET encPermanentKey='c004bc7e34117399d2046655b77c8283', encOpcKey='9245cd6283cc53ce24ac1186a60dee6b', protectionParameterId='c004bc7e34117399d2046655b77c8283' WHERE ueid='208950000000042';"
 
 
-2. Enter UERANSIM and build using the DockerFile: docker buildx build -f docker/Dockerfile --tag hamza/ueransim:latest --load .
-3. Build the SUCI-catcher attack: docker buildx build --tag suci-catcher:latest --load .
-4. Run the SUCI-catcher: docker compose -f attack-sim.yaml up -d suci-catcher
-5. Observe traffic using tshark
-6. Run the UERANSIM: docker compose -f attack-sim.yaml up -d ueransim
+3. Enter UERANSIM and build using the DockerFile:
+
+        docker buildx build -f docker/Dockerfile --tag hamza/ueransim:latest --load .
+   
+5. Build the SUCI-catcher attack:
+
+        docker buildx build --tag suci-catcher:latest --load .
+   
+8. Run the SUCI-catcher:
+
+        docker compose -f attack-sim.yaml up -d suci-catcher
+   
+10. Observe traffic using tshark
+11. Run the UERANSIM:
+
+        docker compose -f attack-sim.yaml up -d ueransim
 
 // NB: The current recording is hardcoded into the script and so attack-sim-fail.yaml will lead to MAC-Failure, while attack-sim.yaml will be successfull//
