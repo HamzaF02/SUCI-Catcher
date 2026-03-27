@@ -1,0 +1,13 @@
+[{
+    "SupiFormat":         0,
+    "MCC":                "208",
+    "MNC":                "95",
+    "RoutingIndicator":   "0210",
+    "ProtectionSchemeId": 1,
+    "HomeNetworkPKI":     1,
+
+    "ECCEphemPK": "0bbbffb3603d5548a4dfd9cc1d9ae1093243885ea371045d52b139a20a845701",
+    "CipherText": "be88252929",
+    "MAC": "0ca918aba74aa915"
+}]
+

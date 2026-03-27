@@ -1,0 +1,80 @@
+services:
+    suci-catcher:
+        image: suci-catcher:latest
+        container_name: suci-catcher
+        privileged: true
+        environment:
+            - AMF_IP=192.168.70.133
+            - AMF_PORT=38412
+            - LISTEN_PORT=38412
+        networks:
+            public_net:
+                ipv4_address: 192.168.70.150
+        healthcheck:
+            test: /bin/bash -c "ss -lnp | grep 38412"
+            interval: 5s
+            timeout: 3s
+            retries: 3
+
+    ueransim:
+      container_name: ueransim
+      image: hamza/ueransim:latest
+      privileged: true
+      depends_on:
+        - suci-catcher
+      environment:
+        - MCC=208
+        - MNC=95
+        - NCI=0x000000010
+        - TAC=0xa000
+        - protectionScheme=1
+        - routingIndicator=0210
+        - LINK_IP=192.168.70.141
+        - NGAP_IP=192.168.70.141
+        - GTP_IP=192.168.72.141
+        - NGAP_PEER_IP=192.168.70.150
+
+        - SST_0=1
+        - SD_0=0xffffff
+
+        - SST_1=1
+        - SD_1=0xffffff
+
+        - SST_2=1
+        - SD_2=0xffffff
+
+        - SST_R=1
+        - SD_R=0xffffff
+
+        - SST_C=1
+        - SD_C=0xffffff
+
+        - SST_D=1
+        - SD_D=0xffffff
+
+        - IGNORE_STREAM_IDS=true
+        - NUMBER_OF_UE=1
+
+        - IMSI=208950000000042
+        - KEY=c004bc7e34117399d2046655b77c8283
+        - OP=9245cd6283cc53ce24ac1186a60dee6b
+        - OP_TYPE=OPC
+        - AMF_VALUE=8000
+        - IMEI=356938035643803
+        - IMEI_SV=0035609204079514
+        - GNB_IP_ADDRESS=192.168.70.141
+        - PDU_TYPE=IPv4
+        - APN=default
+      networks:
+          public_net:
+              ipv4_address: 192.168.70.141
+
+      healthcheck:
+          test: /bin/bash -c "ifconfig uesimtun0"
+          interval: 10s
+          timeout: 5s
+          retries: 5
+networks:
+    public_net:
+        name: demo-oai-public-net
+        external: true
