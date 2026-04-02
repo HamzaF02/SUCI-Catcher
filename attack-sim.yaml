@@ -7,6 +7,7 @@ services:
             - AMF_IP=192.168.70.133
             - AMF_PORT=38412
             - LISTEN_PORT=38412
+            - RECORD_MODE=false
         networks:
             public_net:
                 ipv4_address: 192.168.70.150

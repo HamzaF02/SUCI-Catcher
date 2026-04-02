@@ -5,7 +5,6 @@ import sctp
 from pycrate_asn1dir.NGAP import NGAP_PDU_Descriptions
 from pycrate_mobile.NAS5G import parse_NAS5G
 from copy import deepcopy
-import argparse
 import json
 from pathlib import Path
 from threading import Lock
@@ -14,12 +13,13 @@ from threading import Lock
 # Config 
 _NGAP_PDU_PROTO = NGAP_PDU_Descriptions.NGAP_PDU
 
-AMF_IP      = os.getenv("AMF_IP","0.0.0.0","127.0.0.1")
+AMF_IP      = os.getenv("AMF_IP","127.0.0.1")
 AMF_PORT    = int(os.getenv("AMF_PORT","38412"))
 LISTEN_PORT = int(os.getenv("LISTEN_PORT","38412"))
+RECORD_MODE = os.getenv("RECORD_MODE", "false").lower() == "true"
+
 
 # JSON Config
-RECORD_MODE = False
 JSON_FILE = Path("collected.json")
 _json_lock = Lock()
 
@@ -381,14 +381,6 @@ def handle(gnb_sctp):
     t2.join()
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--save", action="store_true", help="Record SUCIs instead of replacing")
-    args = parser.parse_args()
-    
-    global RECORD_MODE
-    RECORD_MODE = args.save
-
-    
     print(f"SUCI proxy starting")
     print(f"Listening on 0.0.0.0:{LISTEN_PORT}")
     print(f"Forwarding to AMF {AMF_IP}:{AMF_PORT}")
