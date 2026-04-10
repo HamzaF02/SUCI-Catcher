@@ -1,13 +1,67 @@
-[{
-    "SupiFormat":         0,
-    "MCC":                "208",
-    "MNC":                "95",
-    "RoutingIndicator":   "0210",
+[
+  {
+    "PLMN": "20895",
+    "RoutingIndicator": "0210",
     "ProtectionSchemeId": 1,
-    "HomeNetworkPKI":     1,
+    "HomeNetworkPKI": 1,
+    "ECCEphemPK": "0df088f97b81aa8724c5612f2e517478fa94a36d8624ce980c4945d12d583847",
+    "CipherText": "9a28c4282f",
+    "MAC": "0a9f37edc61a68df"
+  },
+  {
+    "PLMN": "20895",
+    "RoutingIndicator": "0210",
+    "ProtectionSchemeId": 1,
+    "HomeNetworkPKI": 1,
+    "ECCEphemPK": "00e4fc4de09a53f36fdccaac89e00a169d9e9970139e181e082d618795d9ff58",
+    "CipherText": "eb6b765596",
+    "MAC": "9703a4005b161b31"
+  },
+  {
+    "PLMN": "20895",
+    "RoutingIndicator": "0210",
+    "ProtectionSchemeId": 1,
+    "HomeNetworkPKI": 1,
+    "ECCEphemPK": "d6b153a146ee04b2cf8766f8599742141c730cb22830a18cc974a66ae70a835a",
+    "CipherText": "bde02e8e00",
+    "MAC": "7c5796ecb091b22c"
+  },
+  {
+    "PLMN": "20895",
+    "RoutingIndicator": "0210",
+    "ProtectionSchemeId": 1,
+    "HomeNetworkPKI": 1,
+    "ECCEphemPK": "649177f046a7b432ecd49708c4ec68522162b871e9828d65ae78366530719217",
+    "CipherText": "254c1f81d9",
+    "MAC": "9440f77dbfad313e"
+  },
+  {
+    "PLMN": "20895",
+    "RoutingIndicator": "0210",
+    "ProtectionSchemeId": 1,
+    "HomeNetworkPKI": 1,
+    "ECCEphemPK": "62189105e092fba1a9b09ea9ef6df1c07d50dd026d73345fd9c2c2c64d866c57",
+    "CipherText": "bf0b05338b",
+    "MAC": "5391894bfc0eca69"
+  },
 
-    "ECCEphemPK": "0bbbffb3603d5548a4dfd9cc1d9ae1093243885ea371045d52b139a20a845701",
-    "CipherText": "be88252929",
-    "MAC": "0ca918aba74aa915"
-}]
+  {
+    "PLMN": "20895",
+    "RoutingIndicator": "0210",
+    "ProtectionSchemeId": 1,
+    "HomeNetworkPKI": 1,
+    "ECCEphemPK": "0b13fc699d78de14898b453bfb302ecd18a5240fcde81c2305579b30364d9a3a",
+    "CipherText": "90c056429f",
+    "MAC": "40dbeab232c94175"
+  },
+  {
+    "PLMN": "20895",
+    "RoutingIndicator": "0210",
+    "ProtectionSchemeId": 1,
+    "HomeNetworkPKI": 1,
+    "ECCEphemPK": "00e4fc4de09a53f36fdccaac89e00a169d9e9970139e181e082d618795d9ff58",
+    "CipherText": "eb6b765596",
+    "MAC": "9703a4005b161b31"
+  }
+]
 

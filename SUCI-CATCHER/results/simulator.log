@@ -1,0 +1,73 @@
+Now setting these variables '@GTP_IP@ @IGNORE_STREAM_IDS@ @LINK_IP@ @MCC@ @MNC@ @NCI@ @NGAP_IP@ @NGAP_PEER_IP@ @SD_0@ @SD_1@ @SD_2@ @SST_0@ @SST_1@ @SST_2@ @TAC@'
+Now setting these variables '@AMF_VALUE@ @APN@ @GNB_IP_ADDRESS@ @IMEI@ @IMEI_SV@ @IMSI@ @KEY@ @MCC@ @MNC@ @OP@ @OP_TYPE@ @PDU_TYPE@ @SD_C@ @SD_D@ @SD_R@ @SST_C@ @SST_D@ @SST_R@ @protectionScheme@ @routingIndicator@'
+Done setting the configuration
+### Running ueransim ###
+Running gnb
+UERANSIM v3.2.7
+[2026-04-10 15:33:28.913] [sctp] [info] Trying to establish SCTP connection... (192.168.70.150:38412)
+[2026-04-10 15:33:28.913] [gtp] [error] GTP/UDP task could not be created. Socket bind failed: Cannot assign requested address
+[2026-04-10 15:33:28.914] [sctp] [info] SCTP connection established (192.168.70.150:38412)
+[2026-04-10 15:33:28.915] [sctp] [debug] SCTP association setup ascId[167]
+[2026-04-10 15:33:28.915] [ngap] [debug] Sending NG Setup Request
+[2026-04-10 15:33:29.568] [ngap] [debug] NG Setup Response received
+[2026-04-10 15:33:29.568] [ngap] [info] NG Setup procedure is successful
+Running ue
+UERANSIM v3.2.7
+[2026-04-10 15:33:29.909] [nas] [info] UE switches to state [MM-DEREGISTERED/PLMN-SEARCH]
+[2026-04-10 15:33:29.909] [rrc] [debug] UE[1] new signal detected
+[2026-04-10 15:33:29.909] [rrc] [debug] New signal detected for cell[1], total [1] cells in coverage
+[2026-04-10 15:33:29.910] [nas] [info] Selected plmn[208/95]
+[2026-04-10 15:33:29.910] [rrc] [info] Selected cell plmn[208/95] tac[40960] category[SUITABLE]
+[2026-04-10 15:33:29.910] [nas] [info] UE switches to state [MM-DEREGISTERED/PS]
+[2026-04-10 15:33:29.910] [nas] [info] UE switches to state [MM-DEREGISTERED/NORMAL-SERVICE]
+[2026-04-10 15:33:29.910] [nas] [debug] Initial registration required due to [MM-DEREG-NORMAL-SERVICE]
+[2026-04-10 15:33:29.911] [nas] [debug] UAC access attempt is allowed for identity[0], category[MO_sig]
+[2026-04-10 15:33:29.911] [nas] [debug] Sending Initial Registration
+[2026-04-10 15:33:29.916] [nas] [info] UE switches to state [MM-REGISTER-INITIATED]
+[2026-04-10 15:33:29.916] [rrc] [debug] Sending RRC Setup Request
+[2026-04-10 15:33:29.917] [rrc] [info] RRC Setup for UE[1]
+[2026-04-10 15:33:29.919] [rrc] [info] RRC connection established
+[2026-04-10 15:33:29.919] [rrc] [info] UE switches to state [RRC-CONNECTED]
+[2026-04-10 15:33:29.919] [nas] [info] UE switches to state [CM-CONNECTED]
+[2026-04-10 15:33:29.919] [ngap] [debug] Initial NAS message received from UE[1]
+[2026-04-10 15:33:30.550] [nas] [debug] Authentication Request received
+[2026-04-10 15:33:30.550] [nas] [debug] Received SQN [0E233AE85453]
+[2026-04-10 15:33:30.550] [nas] [debug] SQN-MS [000000000000]
+[2026-04-10 15:33:30.550] [nas] [error] AUTN validation MAC mismatch. expected [CE8BD061708BB0C9] received [222C4D8411214F05]
+[2026-04-10 15:33:30.550] [nas] [error] Sending Authentication Failure with cause [MAC_FAILURE]
+[2026-04-10 15:33:31.820] [nas] [debug] Authentication Request received
+[2026-04-10 15:33:31.820] [nas] [debug] Received SQN [C5AF3D39B2FB]
+[2026-04-10 15:33:31.820] [nas] [debug] SQN-MS [000000000000]
+[2026-04-10 15:33:31.820] [nas] [error] AUTN validation MAC mismatch. expected [4A8163448A4E6175] received [AC56E58614C91DF5]
+[2026-04-10 15:33:31.820] [nas] [error] Sending Authentication Failure with cause [MAC_FAILURE]
+[2026-04-10 15:33:32.622] [nas] [debug] Authentication Request received
+[2026-04-10 15:33:32.622] [nas] [debug] Received SQN [000000000440]
+[2026-04-10 15:33:32.622] [nas] [debug] SQN-MS [000000000000]
+[2026-04-10 15:33:33.905] [nas] [debug] Authentication Request received
+[2026-04-10 15:33:33.905] [nas] [debug] Received SQN [B23B2C61CC17]
+[2026-04-10 15:33:33.905] [nas] [debug] SQN-MS [000000000440]
+[2026-04-10 15:33:33.905] [nas] [error] AUTN validation MAC mismatch. expected [403022A66F19F956] received [89D1F67880E767A3]
+[2026-04-10 15:33:33.905] [nas] [error] Sending Authentication Failure with cause [MAC_FAILURE]
+[2026-04-10 15:33:35.296] [nas] [debug] Authentication Request received
+[2026-04-10 15:33:35.296] [nas] [debug] Received SQN [D38F3F47FE2A]
+[2026-04-10 15:33:35.296] [nas] [debug] SQN-MS [000000000440]
+[2026-04-10 15:33:35.296] [nas] [error] AUTN validation MAC mismatch. expected [FB165B933962B65B] received [AC30E1D4E48743ED]
+[2026-04-10 15:33:35.296] [nas] [error] Sending Authentication Failure with cause [MAC_FAILURE]
+[2026-04-10 15:33:36.190] [nas] [debug] Authentication Request received
+[2026-04-10 15:33:36.190] [nas] [debug] Received SQN [000000000480]
+[2026-04-10 15:33:36.190] [nas] [debug] SQN-MS [000000000440]
+[2026-04-10 15:33:37.391] [nas] [debug] Authentication Request received
+[2026-04-10 15:33:37.391] [nas] [debug] Received SQN [D42798BE0BFC]
+[2026-04-10 15:33:37.391] [nas] [debug] SQN-MS [000000000480]
+[2026-04-10 15:33:37.391] [nas] [error] AUTN validation MAC mismatch. expected [065F9FFE6387DA21] received [1BDD17E376869D13]
+[2026-04-10 15:33:37.391] [nas] [error] Sending Authentication Failure with cause [MAC_FAILURE]
+[2026-04-10 15:33:38.562] [nas] [debug] Authentication Request received
+[2026-04-10 15:33:38.562] [nas] [debug] Received SQN [0000000004C0]
+[2026-04-10 15:33:38.562] [nas] [debug] SQN-MS [000000000480]
+[2026-04-10 15:33:39.422] [nas] [error] Authentication Reject received
+[2026-04-10 15:33:39.422] [nas] [info] UE switches to state [5U3-ROAMING-NOT-ALLOWED]
+[2026-04-10 15:33:39.422] [nas] [info] UE switches to state [MM-DEREGISTERED/PS]
+[2026-04-10 15:33:39.422] [nas] [info] UE switches to state [MM-DEREGISTERED/NO-SUPI]
+[2026-04-10 15:34:01.973] [ngap] [warning] Sending an error indication with cause: radio-network/inconsistent-remote-UE-NGAP-ID
+[2026-04-10 15:34:02.879] [ngap] [warning] Sending an error indication with cause: radio-network/inconsistent-remote-UE-NGAP-ID
+runner@ubuntu5g:~/oai-cn5g-fed/docker-compose$ docker logs suci-catcher

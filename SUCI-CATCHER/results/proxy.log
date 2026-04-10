@@ -1,0 +1,42 @@
+warning: CryptoMobile Python module not found, unable to handle 5G NAS security
+SUCI proxy starting
+Listening on 0.0.0.0:38412
+Forwarding to AMF 192.168.70.138:38412
+Mode: REPLACE SUCI with a recorded one
+New gNB connection from ('192.168.70.141', 51961)
+ gNB connected — opening AMF 192.168.70.138:38412
+InitialUEMessage — RAN-UE-NGAP-ID: 1
+Forwarding InitialUEMessage with SUCI 0
+Replaced SUCI with: {'PLMN': '20895', 'RoutingIndicator': '0210', 'ProtectionSchemeId': 1, 'HomeNetworkPKI': 1, 'ECCEphemPK': b'\r\xf0\x88\xf9{\x81\xaa\x87$\xc5a/.Qtx\xfa\x94\xa3m\x86$\xce\x98\x0cIE\xd1-X8G', 'CipherText': b'\x9a(\xc4(/', 'MAC': b'\n\x9f7\xed\xc6\x1ah\xdf'}
+Forwarding patched InitialUEMessage
+Recording InitialUEMessage for later tampering
+Original InitialUEMessage received. Saving AMF-UE-NGAP-ID 9
+Authentication Response/Failure — RAN-UE-NGAP-ID: 1
+Authentication Failure — RAN-UE-NGAP-ID: 1
+Forwarding InitialUEMessage with SUCI 1
+Replaced SUCI with: {'PLMN': '20895', 'RoutingIndicator': '0210', 'ProtectionSchemeId': 1, 'HomeNetworkPKI': 1, 'ECCEphemPK': b'\x00\xe4\xfcM\xe0\x9aS\xf3o\xdc\xca\xac\x89\xe0\n\x16\x9d\x9e\x99p\x13\x9e\x18\x1e\x08-a\x87\x95\xd9\xffX', 'CipherText': b'\xebkvU\x96', 'MAC': b'\x97\x03\xa4\x00[\x16\x1b1'}
+Authentication Response/Failure — RAN-UE-NGAP-ID: 1
+Authentication Failure — RAN-UE-NGAP-ID: 1
+Reset & Sync
+Authentication Response/Failure — RAN-UE-NGAP-ID: 1
+Authentication Response — RAN-UE-NGAP-ID: 1
+Forwarding InitialUEMessage with SUCI 2
+Replaced SUCI with: {'PLMN': '20895', 'RoutingIndicator': '0210', 'ProtectionSchemeId': 1, 'HomeNetworkPKI': 1, 'ECCEphemPK': b'\xd6\xb1S\xa1F\xee\x04\xb2\xcf\x87f\xf8Y\x97B\x14\x1cs\x0c\xb2(0\xa1\x8c\xc9t\xa6j\xe7\n\x83Z', 'CipherText': b'\xbd\xe0.\x8e\x00', 'MAC': b'|W\x96\xec\xb0\x91\xb2,'}
+Authentication Response/Failure — RAN-UE-NGAP-ID: 1
+Authentication Failure — RAN-UE-NGAP-ID: 1
+Forwarding InitialUEMessage with SUCI 3
+Replaced SUCI with: {'PLMN': '20895', 'RoutingIndicator': '0210', 'ProtectionSchemeId': 1, 'HomeNetworkPKI': 1, 'ECCEphemPK': b'd\x91w\xf0F\xa7\xb42\xec\xd4\x97\x08\xc4\xechR!b\xb8q\xe9\x82\x8de\xaex6e0q\x92\x17', 'CipherText': b'%L\x1f\x81\xd9', 'MAC': b'\x94@\xf7}\xbf\xad1>'}
+Authentication Response/Failure — RAN-UE-NGAP-ID: 1
+Authentication Failure — RAN-UE-NGAP-ID: 1
+Reset & Sync
+Authentication Response/Failure — RAN-UE-NGAP-ID: 1
+Authentication Response — RAN-UE-NGAP-ID: 1
+Forwarding InitialUEMessage with SUCI 4
+Replaced SUCI with: {'PLMN': '20895', 'RoutingIndicator': '0210', 'ProtectionSchemeId': 1, 'HomeNetworkPKI': 1, 'ECCEphemPK': b'b\x18\x91\x05\xe0\x92\xfb\xa1\xa9\xb0\x9e\xa9\xefm\xf1\xc0}P\xdd\x02ms4_\xd9\xc2\xc2\xc6M\x86lW', 'CipherText': b'\xbf\x0b\x053\x8b', 'MAC': b'S\x91\x89K\xfc\x0e\xcai'}
+Authentication Response/Failure — RAN-UE-NGAP-ID: 1
+Authentication Failure — RAN-UE-NGAP-ID: 1
+Forwarding InitialUEMessage with SUCI 5
+Replaced SUCI with: {'PLMN': '20895', 'RoutingIndicator': '0210', 'ProtectionSchemeId': 1, 'HomeNetworkPKI': 1, 'ECCEphemPK': b'\x0b\x13\xfci\x9dx\xde\x14\x89\x8bE;\xfb0.\xcd\x18\xa5$\x0f\xcd\xe8\x1c#\x05W\x9b06M\x9a:', 'CipherText': b'\x90\xc0VB\x9f', 'MAC': b'@\xdb\xea\xb22\xc9Au'}
+Authentication Response/Failure — RAN-UE-NGAP-ID: 1
+Authentication Response — RAN-UE-NGAP-ID: 1
+UE successfully found 5

@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     && pip install pysctp pycrate
 
 WORKDIR /app
-COPY suci-probe.py .
+COPY suci-attack.py .
+COPY collected.json .
 
-CMD ["python", "-u", "suci-probe.py"]
+CMD ["python", "-u", "suci-attack.py"]
