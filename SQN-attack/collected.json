@@ -1,0 +1,83 @@
+[
+  {
+    "ran_ue_ngap_id": 1,
+    "j": -1,
+    "auts_hex": "ccf53657b7a8ef4c74b541426c29",
+    "conc_star_hex": "ccf53657b7a8",
+    "mac_s_hex": "ef4c74b541426c29",
+    "delta_hex": null,
+    "baseline_hex": null
+  },
+  {
+    "ran_ue_ngap_id": 1,
+    "j": 0,
+    "auts_hex": "ccf53657b668977cd4be6e7f2024",
+    "conc_star_hex": "ccf53657b668",
+    "mac_s_hex": "977cd4be6e7f2024",
+    "delta_hex": "0x1c0",
+    "baseline_hex": "0xccf53657b7a8"
+  },
+  {
+    "ran_ue_ngap_id": 1,
+    "j": 1,
+    "auts_hex": "ccf53657b628e8dcf3806ce8ec5f",
+    "conc_star_hex": "ccf53657b628",
+    "mac_s_hex": "e8dcf3806ce8ec5f",
+    "delta_hex": "0x180",
+    "baseline_hex": "0xccf53657b7a8"
+  },
+  {
+    "ran_ue_ngap_id": 1,
+    "j": 2,
+    "auts_hex": "ccf53657b6a8a144f4b1e06bc284",
+    "conc_star_hex": "ccf53657b6a8",
+    "mac_s_hex": "a144f4b1e06bc284",
+    "delta_hex": "0x100",
+    "baseline_hex": "0xccf53657b7a8"
+  },
+  {
+    "ran_ue_ngap_id": 1,
+    "j": 3,
+    "auts_hex": "ccf53657b5a82254bda440fe442f",
+    "conc_star_hex": "ccf53657b5a8",
+    "mac_s_hex": "2254bda440fe442f",
+    "delta_hex": "0x200",
+    "baseline_hex": "0xccf53657b7a8"
+  },
+  {
+    "ran_ue_ngap_id": 1,
+    "j": 4,
+    "auts_hex": "ccf53657b3a80deac89316e64ee5",
+    "conc_star_hex": "ccf53657b3a8",
+    "mac_s_hex": "0deac89316e64ee5",
+    "delta_hex": "0x400",
+    "baseline_hex": "0xccf53657b7a8"
+  },
+  {
+    "ran_ue_ngap_id": 1,
+    "j": 5,
+    "auts_hex": "ccf53657bfa84f28766e44b5b1d5",
+    "conc_star_hex": "ccf53657bfa8",
+    "mac_s_hex": "4f28766e44b5b1d5",
+    "delta_hex": "0x800",
+    "baseline_hex": "0xccf53657b7a8"
+  },
+  {
+    "ran_ue_ngap_id": 1,
+    "j": 6,
+    "auts_hex": "ccf53657a7a831cf85e5be0ce326",
+    "conc_star_hex": "ccf53657a7a8",
+    "mac_s_hex": "31cf85e5be0ce326",
+    "delta_hex": "0x1000",
+    "baseline_hex": "0xccf53657b7a8"
+  },
+  {
+    "ran_ue_ngap_id": 1,
+    "j": 7,
+    "auts_hex": "ccf5365797a89d53b7ee32ee3d62",
+    "conc_star_hex": "ccf5365797a8",
+    "mac_s_hex": "9d53b7ee32ee3d62",
+    "delta_hex": "0x2000",
+    "baseline_hex": "0xccf53657b7a8"
+  }
+]
